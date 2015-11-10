@@ -1,0 +1,63 @@
+% Levenberg-Marquardt 1-D Fitting
+% initially input
+%   a       --  guess values
+%   lambda  --  initial "damping" factor, may be 1
+%   P       --  data, P(:,1) for x's, P(:,2) for y's
+P=data;
+lambda = 1;
+a = [0 1 50 50]';
+
+
+
+% fitting function
+% func=@(x,p)p(1)+p(2)*x;     
+% func=@(x,p)p(1)+p(2)*exp_conv(x-p(3),p(4),p(5)); % single decay
+% func=@(x,p)p(1)+p(2)*(exp_conv(x-p(3),inf,p(5))-exp_conv(x-p(3),p(4),p(5))); % single rise
+ func=@(x,p)p(1)+p(2)*exp(-(x-p(3)).^2/p(4).^2/2); % 2 gaussians
+
+
+% bound of parameters
+% bound=@(p)p(2)>0&&p(4)>10&&p(5)>5;
+bound=@(p)1;
+la=length(a); % # of parameters
+lx=size(P,1); % # of data points
+dd=1e-4; % a tiny number to calc derivatives
+A=zeros(lx,la); % Jacobian Df/Da
+
+v=1.1; % rate to adjust lambda
+
+for i=1:1000
+    P(:,3)=func(P(:,1),a); % estimate values
+    K0=P(:,2)-P(:,3); % residuals
+    Y0=K0'*K0; % sum of squares, to be minimized
+    Y=inf; % just larger than Y0 in order to go into the loop
+    
+    for j=1:la
+        temp=a;
+        temp(j)=temp(j)+dd;
+        C=func(P(:,1),temp);
+        A(:,j)=(C-P(:,3))/dd; % calc derivatives to get Jacobian Df/Da
+    end
+    H=A'*A;
+    
+    lambda=lambda/v/v;
+    while(Y>Y0) % adjust lambda until new error is less than original error
+        lambda=lambda*v;
+        m=(H+lambda*diag(diag(H)))\A'*K0; % calc increment of a
+%         m=(H+lambda*eye(size(H)))\A'*K0; % calc increment of a
+        temp=a+m; % test new parameters
+        if ~bound(temp)
+            continue
+        end
+        K=P(:,2)-func(P(:,1),temp); % new residuals
+        Y=K'*K; % new error (sum of squares)
+    end
+    a=temp; % apply new optimum
+    i,Y,m % show error and increment
+end
+err=sqrt(diag(inv(H))*Y/(lx-la));
+
+a,err % show optimized parameters and errors
+ttt=linspace(min(P(:,1)),max(P(:,1)),10000);
+figure,plot(P(:,1),P(:,2),'o',ttt,func(ttt,a),'r','LineWidth',1.5)
+

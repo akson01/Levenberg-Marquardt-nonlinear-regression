@@ -1,0 +1,84 @@
+% Multi-curve Fitting based on Levenberg-Marquardt algorithm
+% Need to initialize
+%   a       --  guess values
+%   lambda  --  initial "damping" factor, may be 1
+%   P       --  data points, P(:,1) for x's, P(:,2) for y's
+%   N       --  # of data points for each curve
+
+% fitting functions
+
+% decay / rise->decay
+f1 = @(x,p) p(1)+p(3)*exp_conv(x-p(5),p(7),p(6));
+f2 = @(x,p) p(2)+p(4)*(exp_conv(x-p(5),inf,p(6))-exp_conv(x-p(5),p(7),p(6)));
+
+
+
+func=@(x,y,p)(y==1).*f1(x,p)+(y==2).*f2(x,p); % add more for multiple curves
+
+% bound of parameters
+bound=@(p)1;
+
+if size(P, 2) == 2
+    P(:,3)=P(:,2);
+    Y=[];
+    for i=1:length(N)
+        Y=[Y; repmat(i,N(i),1)];
+    end
+    P(:,2)=Y;
+end
+
+la=length(a); % # of parameters
+lx=size(P,1); % # of data points
+dd=1e-4; % a tiny number to calc derivatives
+A=zeros(lx,la); % Jacobian Df/Da
+
+v=1.5; % rate to adjust lambda
+
+for i=1:50
+    P(:,4)=func(P(:,1),P(:,2),a); % estimate values
+%     P(:,4)=P(:,4)/sum(P(:,4));
+    K0=P(:,3)-P(:,4); % residuals
+    Y0=K0'*K0; % sum of squares, to be minimized
+    Y=Y0+1; % just larger than Y0 in order to go into the loop
+    
+    for j=1:la
+        temp=a;
+        temp(j)=temp(j)+dd;
+        C=func(P(:,1),P(:,2),temp);
+        A(:,j)=(C-P(:,4))/dd; % calc derivatives to get Jacobian Df/Da
+    end
+    H=A'*A;
+    
+    lambda=lambda/v/v;
+    while(Y>Y0) % adjust lambda until new error is less than original error
+        lambda=lambda*v;
+%         m=(H+lambda*diag(diag(H)))\A'*K0; % calc increment of a
+        m=(H+lambda*eye(size(H)))\A'*K0; % calc increment of a
+        temp=a+m; % test new parameters
+        if ~bound(temp)
+            continue
+        end
+        C=func(P(:,1),P(:,2),temp);
+%         C=P(:,4)/sum(C);
+        K=P(:,3)-C; % new residuals
+        Y=K'*K; % new error (sum of squares)
+    end
+    a=temp; % apply new optimum
+    i,Y,m,a % show error, increment and result
+%     if max(abs(m))<1e-10 
+%         break % stop when converged
+%     end
+end
+
+err=sqrt(diag(inv(H))*Y/(lx-la)) % errors calculated by covariance matrix
+
+tt=linspace(min(P(:,1)),max(P(:,1)),10000);
+figure,hold all
+c=get(gca,'ColorOrder');
+n=0;
+for i=1:length(N)
+    plot(P(n+1:n+N(i),1),P(n+1:n+N(i),3),'.',tt,func(tt,i,a),'Color',c(mod(i,size(c,1)),:),'LineWidth',1.5)
+    n=n+N(i);
+end
+% figure,plot(X,Q,'o',X,reshape(P(:,4),size(Q)),'LineWidth',1.5) % plot result
+
